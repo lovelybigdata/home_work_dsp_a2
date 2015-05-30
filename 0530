@@ -1,0 +1,311 @@
+
+# 特定的符號，似乎只能出現在句尾，例如 ggplot 常用的 + 或是 dplyr 常用的 %>%
+# 把 group_by 和 summarise 連用，蠻方便的
+
+GroupBy_Store_Dept <- group_by(raw , Store , Dept) %>%
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count= sum(Sales_Number) )
+
+head(GroupBy_Store_Dept)
+
+# 畫成圖，最適合的應該是 bar 圖
+
+  ggplot(data = GroupBy_Store_Dept  ,aes_string(x=Store, y = Sales ))+geom_bar(stat ="identity" ,fill= Dept  )  
+
+ 最基本的圖
+ ggplot(data = GroupBy_Store_Dept  ,aes(x=Store, y = Sales ))+geom_bar(stat ="identity" )  
+ 然後在這其中，用 Dept 來上色
+
+# 先簡單的視覺化，看看不同地區間不同部門是不是有很顯著的差異
+# aes(fill=Dept) 是用來對不同部門上色的
+ggplot(data = GroupBy_Store_Dept  ,aes(x=Store, y = Sales ))+geom_bar(stat ="identity" , aes(fill=Dept)) 
+
+# 現在反過來看，如果是相同部門的話，在不同地區間是否有差異呢???
+# 看總額不太準，因為南部地區已經輸慘了 
+ggplot(data = GroupBy_Store_Dept  ,aes(x=Dept  , y = Sales ))+geom_bar(stat ="identity" , aes(fill=Store)) 
+
+# 用平均銷售量來看看，嗯 南部還是輸很慘
+ggplot(data = GroupBy_Store_Dept  ,aes(x=Dept  , y = AVG_Sales))+geom_bar(stat ="identity" , aes(fill=Store)) 
+
+# 先將圖加以排序
+
+GroupBy_Store_Dept <- group_by(raw , Store , Dept) %>%
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count=sum(Sales_Number) ) %>%
+   arrange( desc(Sales) )
+
+ 
+
+# 讓mac 可以在圖形上顯示中文
+thm <- functiosum(Sales_Number) {
+  theme_gray(base_family = "STHeiti") + # 讓Mac使用者能夠顯示中文, Windows使用者應省略這行
+  theme(text=element_text(size=18)) # 將字體調整至18號
+}
+
+
+# 將圖依store分群 -- , position="dodge" -- 總銷售額 南部也是最低的
+   ggplot(GroupBy_Store_Dept , aes(x=Dept, y=Sales, fill=Store)) + geom_bar(stat="identity", position="dodge") + thm()
+
+
+# 將圖依store分群 -- , position="dodge" -- 平均銷售額 南部也是最低的
+   ggplot(GroupBy_Store_Dept , aes(x=Dept, y=AVG_Sales, fill=Store)) + geom_bar(stat="identity", position="dodge") + thm()
+
+# 將圖依store分群 -- , position="dodge" -- 各部門銷售日數計次? 南部也是最低的，不過大概有11個部門是不會輸太多，也就是南部輸很大主因還是在於總銷售額與平均銷售額
+   ggplot(GroupBy_Store_Dept , aes(x=Dept, y=Sales_count, fill=Store)) + geom_bar(stat="identity", position="dodge") + thm()
+
+# 探討一下輸很大的是那些項目
+
+GroupBy_Store_Dept <- group_by(raw , Store , Dept) %>%
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count=sum(Sales_Number) ) %>%
+    %>% mutate( Sales - min(Sales))
+
+# 試著將 group 給解開  ungroup 再排序才會有效果
+GroupBy_Store_Dept <- group_by(raw , Store , Dept) %>%
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count=sum(Sales_Number) ) %>% ungroup() %>%
+   arrange( desc(Sales) )
+
+# 選入前10個來看看，那個部門是要先進行提升的
+GroupBy_Store_Dept[1:10,]
+
+#先選入前5大重點部門加以提升，考慮進行主管職在職訓練計劃
+直接用 
+GroupBy_Dept<- group_by(raw , Dept  ) %>%
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count=sum(Sales_Number) ) %>% ungroup() %>%
+   arrange( desc(Sales) )
+
+head(GroupBy_Dept) 可知前5大分別為
+           Dept     Sales AVG_Sales Sales_count
+1  乾式休閒食品 772826136 4677.6146      165218
+2  個人衛生用品 386685687 5580.5243       69292
+3  冷凍冷藏食品 376043982 4915.2221       76506
+4      飲料酒類 349396033 7217.7333       48408
+5      居家用品 291782496 1311.6178      222460
+
+# 或是直接輸出前5大為一個向量 , 排序後，只輸出部門，再選前5名
+find_5_Dept  <- group_by(raw , Dept  ) %>%
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count=sum(Sales_Number) ) %>% ungroup() %>%
+   arrange( desc(Sales) ) %>%  select( Dept) %>% filter(row_number()<=5 )
+
+
+# 用這個方式轉成向量，就可以到 dplyr 來直接使用 filter 過濾
+
+v_find_5_Dept <-   as.vector(as.matrix(find_5_Dept)) 
+
+raw <- filter(raw , Dept %in%  v_find_5_Dept    ) 
+
+unique(v_find_5_Dept)
+# [1] "乾式休閒食品" "個人衛生用品" "冷凍冷藏食品" "飲料酒類"    
+# [5] "居家用品"   
+
+# 利用這樣的方式來過濾 此處的 %in% 可以直接想成是 SQL 的 IN語法
+# 而且順便計算一下平均單價 -- 產生新變數
+# 計算一下是否高於平均數高於眾數? 表示為右偏，民眾喜歡便宜貨
+
+  new_raw <- filter( raw,  Dept   %in%  v_find_5_Dept) %>% mutate( Avg_price =  Sales_Value / Sales_Qty ) %>% mutate( Mean_bigger_Mode =  Avg_price > Price_Mode   ) %>% mutate( Mean_small_Mode =  Avg_price < Price_Mode   ) %>% mutate( diff_mean_mode=  Avg_price - Price_Mode   )
+
+# 貪小便宜的次數 238456
+sum( new_raw$Mean_bigger_Mode)
+
+#先稍為看一下 南部是不是比例真的比較高 -- 感覺有點像是在下 SQL
+# 在dplyr 函數裡面直接寫欄位名稱就好，就不用再用 $ 來指定了
+
+  group_by(new_raw  , Store  )  %>%    summarise( sum( Mean_small_Mode) )   # 南部貪小便宜在次數上差不多
+   group_by(new_raw  , Store  )  %>%    summarise( sum( diff_mean_mode) )  # 快速看一下南部有沒有特別爛 也沒有什麼特別的
+  看看到底什麼品項，貪小便宜的現象最嚴重呢??
+  到然還有 825個 family
+group_by(new_raw  , Store ,  Family  )  %>%    summarise( sum_diff = sum( diff_mean_mode) ) %>% ungroup() %>% 
+arrange(sum_diff)
+
+
+# 目前看不到什麼重點
+#  Store sum(Mean_bigger_Mode)
+#1    H1                 89016
+#2    S1                 66031
+#3    T1                 83409
+#
+#  Store sum(Mean_small_Mode)
+#1    H1                85972
+#2    S1                62083
+#3    T1                78701
+#
+
+
+# 樣本數立刻由 1021033 降為 581884
+
+# 再把前面做的分析重新做一次
+
+# 如果直接用 ggplot 畫圖有點久，還是先用 dplyr 處理後再丟進 ggplot 
+  ggplot( new_raw_filter , aes(x=Dept, y=  Sales_Value , fill=Store)) + geom_bar(stat="identity", position="dodge") + thm()
+
+ # 順便也產生新變數 平均單價 Avg_price
+
+
+%>%  mutate( Avg_price =  Sales_Value / Sales_Qty )
+
+
+ new_raw_GroupBy_Store_Dept <- group_by(new_raw  , Store , Dept)  %>% 
+   summarise(Sales=sum( Sales_Value) ,AVG_Sales =  mean(Sales_Value) , Sales_count=sum(Sales_Number) )  %>%  mutate( Avg_price =  Sales_Value / Sales_Qty )
+
+# 這樣畫圖會快很多
+ ggplot( new_raw_GroupBy_Store_Dept , aes(x=Dept, y=  Sales  , fill=Store)) + geom_bar(stat="identity", position="dodge") + thm()
+
+# 選出前5大部門後，考慮南部是那些產品的眾數比別人更低，導致總體的銷售額更是起不來
+# 順便也檢查一下次數
+ ggplot( new_raw_GroupBy_Store_Dept , aes(x=Dept, y=  Sales_count , fill=Store)) + geom_bar(stat="identity", position="dodge") + thm()
+
+# 部份眾數的資訊有錯
+ # s <- mutate( raw   , Avg_price = Sales_Value / Sales_Qty ) %>% filter(   Sales_Qty == 1 & Price_Mode != Avg_price  )
+
+
+ 今天有發現眾數資訊有蠻多錯誤的資料  例如: s <- mutate( raw   , Avg_price = Sales_Value / Sales_Qty ) %>% filter(   Sales_Qty == 1 & Price_Mode != Avg_price  )   s應該要0個才對 ；銷售量只有一筆時，總銷售額應該是等於平均單價等於眾數 但有4萬多筆資料都不符合這個要求 
+
+  結果有些想做的分析就做不下去了 
+
+
+
+  反過來也就是說如果是 filter(raw_new,   Sales_Qty != 1 & Price_Mode != Avg_price
+
+
+
+輔助:
+
+#s1 是眾數資訊有問題的資料，銷售筆數為1筆時，價格眾數 = 價格平均數才是對的
+  s1 <- mutate( raw   , Avg_price = Sales_Value / Sales_Qty ) %>% filter(   Sales_Qty == 1 & Price_Mode != Avg_price  )
+
+
+# 使用差集的手法濾掉s1  
+
+raw <- setdiff(raw , s1)
+
+# 這5大部門都有品項的總銷售額在離群值之外
+# Family 刪掉空字串
+raw <- filter(raw , Family != '' )
+
+distint( raw , Dept , Family)
+
+ggplot(raw , aes( x=Dept , y = Sales_Value, fill=Store ) ) + geom_boxplot() + thm()
+# 可以看到離群值分布的蠻多的，而南部量販店也輸
+
+ggplot(raw , aes( x=Dept , y = Sales_Value / Sales_Qty, fill=Store ) ) + geom_boxplot() + thm()
+# 如果將y軸換為平均銷售額(總銷售金額/銷售數量)? 
+# 此時可以發現只有居家用品會出現比較誇張的散布
+
+# 觀察一下單日銷售量的分布
+ggplot(raw , aes( x=Dept , y = Sales_Qty, fill=Store ) ) + geom_boxplot() + thm()
+居家用品與冷凍冷藏食物的波動不像另外3種誇張(極端值很大)
+這應該是有和時間、季節有連動關係
+
+# Sales_Number可視為當日購物人數
+ggplot(raw , aes( x=Dept , y = Sales_Number, fill=Store ) ) + geom_boxplot() + thm()
+居家用品與冷凍冷藏食物的波動比另外3種誇張
+這應該是有和時間、季節有連動關係
+
+#看一下xy分布圖好了
+ggplot(raw , aes( x= Sales_Qty , y = Sales_Number, fill=Store ) ) + geom_point() + thm()
+# 主要還是主相關
+
+
+
+ggplot(raw , aes( x=Family  , y = Sales_Value ,   fill=Store) ) + geom_boxplot() + thm()
+
+# 檢查 有多少的品頁 dept + family 829種
+select( raw , Dept , Family) %>% distinct(  )
+# 確認一下每個部門底下有多少個 family 分布
+select( raw , Dept , Family) %>% distinct(  ) %>%  group_by(Dept) %>% summarise( count= n())
+
+# distinct 搭配 select 還蠻好用的
+          Dept count
+1     居家用品   464
+2 乾式休閒食品   163
+3 冷凍冷藏食品    74
+4 個人衛生用品    75
+5     飲料酒類    53
+可以發現居家用品的項目超多的
+
+
+
+#使用 dplyr 進行計算出類似樞紐分析表的東西
+#大概可以知道就算剩下了5個部門 , 輸出前20個
+group_by(raw , Store , Dept, Family) %>% summarise( count=n() , Total_Sales = sum(Sales_Value) , Avg_Sales = mean(Sales_Value ) ) %>% ungroup() %>% arrange( desc(Total_Sales)) %>% top_n()
+
+輸出前10名，可以發現完全沒有s1的影子
+   Store         Dept    Family count Total_Sales Avg_Sales
+1     T1 個人衛生用品  抽取式一   365    25560311  70028.25
+2     H1 個人衛生用品  抽取式一   365    23291088  63811.20
+3     T1 冷凍冷藏食品  鮮乳一一   365    16515775  45248.70
+4     H1 乾式休閒食品 米一 一一   365    16145260  44233.59
+5     H1 冷凍冷藏食品  其它一一   365    15140143  41479.84
+6     T1 乾式休閒食品 米一 一一   365    14475057  39657.69
+7     T1     飲料酒類  一般啤酒   365    14421203  39510.15
+8     T1 乾式休閒食品  核果蔬菜    51     2206548  43265.65
+9     H1 乾式休閒食品  核果蔬菜    36     1561622  43378.39
+10    T1     居家用品  逆滲水器     3      134129  44709.67
+
+# 不過前7名幾乎是每天都會有銷售量
+
+  
+將資料重新整理後，輸出成 w1 但此時有點難以閱讀
+
+group_by(raw , Store , Dept ) %>% summarise( count=n() , Total_Sales = sum(Sales_Value) , Avg_Sales = mean(Sales_Value ) )   -> w1
+
+# 用這樣的語法轉成類似樞紐分析法的效果 # 因為我有先用 dplyr 整理過，所以不用再用聚合函數
+# 用dcast 只是為了排版好看
+
+dcast(w1 , Store ~ Dept     ,  value.var ='Total_Sales' )
+
+  Store  居家用品 乾式休閒食品 冷凍冷藏食品 個人衛生用品  飲料酒類
+1    H1 117405448    317106466    155786283    159150793 146410711
+2    S1  26030916    164209273     83129853     69281771  65851651
+3    T1  96222910    288932602    136335883    155340249 134278058
+
+但是這樣的方式只能容納一個 value.var
+
+如果要放2層以上的樞紐分析的效果時
+還是只能先用 melt 轉置過一次
+
+melt(w1 , id.vars = c("Store","Dept"), 
+                                 measure.vars = c("Total_Sales", "Avg_Sales")) -> w2
+
+  dcast(w2, Store ~ Dept + variable, value.var = "value")
+產生出類似2層樞紐分析的效果
+也能做到依月份轉置的效果 -- 不過閱讀起來有點累 冏
+
+ Store 居家用品_Total_Sales 居家用品_Avg_Sales 乾式休閒食品_Total_Sales
+1    H1            117405448          1990.3614                317106466
+2    S1             26030916           980.7443                164209273
+3    T1             96222910          1982.1793                288932602
+  乾式休閒食品_Avg_Sales 冷凍冷藏食品_Total_Sales 冷凍冷藏食品_Avg_Sales
+1               5883.128                155786283               6172.443
+2               3285.763                 83129853               3639.342
+3               5428.717                136335883               5580.218
+  個人衛生用品_Total_Sales 個人衛生用品_Avg_Sales 飲料酒類_Total_Sales
+1                159150793               7030.250            146410711
+2                 69281771               3923.757             65851651
+3                155340249               7018.490            134278058
+  飲料酒類_Avg_Sales
+1           9298.870
+2           4888.401
+3           8667.574
+
+或是
+  dcast(w2, Store + Dept ~ variable, value.var = "value")
+但這樣就回到原本的效果了
+Store         Dept Total_Sales Avg_Sales
+1     H1     居家用品   117405448 1990.3614
+2     H1 乾式休閒食品   317106466 5883.1277
+3     H1 冷凍冷藏食品   155786283 6172.4428
+4     H1 個人衛生用品   159150793 7030.2497
+5     H1     飲料酒類   146410711 9298.8702
+6     S1     居家用品    26030916  980.7443
+7     S1 乾式休閒食品   164209273 3285.7626
+8     S1 冷凍冷藏食品    83129853 3639.3421
+9     S1 個人衛生用品    69281771 3923.7566
+
+### 找出每個部門最高的銷售數字降序排列，然後只列出第一個
+### 想法 sql 底下，用 group by 部門，然後用
+group_by(raw, Dept) %>% arrange(-Sales_Number) %>% slice(1)
+
+#注意，此時如果將 slice 改為 top_n(1) 得到的會是銷售數字最低的
+
+#依次類推，如果是需要用 store 與 dept 分組，則下指令如下:
+group_by(raw, Store , Dept) %>% arrange(-Sales_Number) %>% slice(1)
+
+slice 切片可以取任意的名次 slice (c(2,5,10)) 例如取 第2名、第5名、第10名
